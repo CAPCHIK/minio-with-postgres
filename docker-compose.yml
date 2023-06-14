@@ -1,0 +1,58 @@
+version: '3.8'
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-file: '10'
+    max-size: 200k
+
+services:
+
+  proxy:
+    image: caddy:2.6
+    restart: always
+    ports:
+      - 80:80
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    environment:
+      - ROOT_REDIRECT_URL=${ROOT_REDIRECT_URL?no redirect url for root path}
+    logging: *logging
+
+  minio:
+    image: quay.io/minio/minio:RELEASE.2023-06-09T07-32-12Z
+    command: server /data --console-address ":9090"
+    restart: always
+    ports:
+      - 9090:9090
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER?no minio user}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD?no minio password}
+
+      MINIO_NOTIFY_POSTGRES_ENABLE_primary: "on"
+      MINIO_NOTIFY_POSTGRES_CONNECTION_STRING_primary: "host=events-store-postgres port=5432 sslmode=disable user=postgres password=${POSTGRES_PASSWORD?no postgres password}"
+      MINIO_NOTIFY_POSTGRES_TABLE_primary: "minioevents"
+      MINIO_NOTIFY_POSTGRES_FORMAT_primary: "access"
+      MINIO_NOTIFY_POSTGRES_MAX_OPEN_CONNECTIONS_primary: "2"
+      MINIO_NOTIFY_POSTGRES_QUEUE_DIR_primary: "/opt/minio/events"
+      MINIO_NOTIFY_POSTGRES_QUEUE_LIMIT_primary: "100000"
+      MINIO_NOTIFY_POSTGRES_COMMENT_primary: "Primary PostgreSQL Notification Event Logging"
+    volumes:
+      - minio-data:/data
+      - minio-events-queue:/opt/minio/events
+    logging: *logging
+
+  events-store-postgres:
+    image: postgres:15.3
+    restart: always
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD?no postgres password}
+    ports:
+      - ${POSTGRES_LISTEN_ON_HOST_PORT:-5432}:5432
+    volumes:
+      - events-store-postgres-data:/var/lib/postgresql/data
+    logging: *logging
+volumes:
+  minio-data:
+  minio-events-queue:
+  events-store-postgres-data:

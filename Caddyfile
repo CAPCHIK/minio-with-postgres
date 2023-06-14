@@ -1,0 +1,4 @@
+:80 {
+  redir / {$ROOT_REDIRECT_URL}
+  reverse_proxy * "minio:9000"
+}
